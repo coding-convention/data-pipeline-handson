@@ -1,0 +1,6 @@
+# OMX runtime/session state
+.omx/logs/
+.omx/state/
+.omx/drafts/
+.omx/metrics.json
+.omx/tmux-hook.json
