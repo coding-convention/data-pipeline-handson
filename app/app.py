@@ -10,7 +10,10 @@ from typing import Any
 
 from flask import Flask, jsonify, render_template, request
 
-from quiz_seed import init_db
+try:
+    from .quiz_seed import init_db
+except ImportError:
+    from quiz_seed import init_db
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = Path(os.getenv("APP_SQLITE_PATH", BASE_DIR / "data" / "quiz.sqlite3"))
