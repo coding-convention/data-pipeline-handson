@@ -33,7 +33,7 @@ fi
 
 "$PYTHON_BIN" scripts/upload_logs_to_minio.py
 "$PYTHON_BIN" scripts/load_minio_to_duckdb.py
-dbt --project-dir dbt_quiz --profiles-dir "$DBT_PROFILES_DIR" run
-dbt --project-dir dbt_quiz --profiles-dir "$DBT_PROFILES_DIR" test
+dbt run --project-dir dbt_quiz --profiles-dir "$DBT_PROFILES_DIR"
+dbt test --project-dir dbt_quiz --profiles-dir "$DBT_PROFILES_DIR"
 "$PYTHON_BIN" scripts/render_report.py
 "$PYTHON_BIN" scripts/verify_pipeline.py

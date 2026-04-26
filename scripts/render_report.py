@@ -6,7 +6,7 @@ from pathlib import Path
 import duckdb
 
 DUCKDB_PATH = Path(os.environ.get("DUCKDB_PATH", "warehouse/quiz.duckdb"))
-REPORT_PATH = Path("reports/quiz_pipeline_report.html")
+REPORT_PATH = Path(os.environ.get("REPORT_PATH", "reports/quiz_pipeline_report.html"))
 
 
 def query_rows(query: str):
@@ -18,7 +18,7 @@ def main() -> int:
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     event_counts = query_rows(
-        "SELECT event_type, COUNT(*) AS cnt FROM mart_quiz_summary_event_counts ORDER BY event_type"
+        "SELECT event_type, cnt FROM mart_quiz_summary_event_counts ORDER BY event_type"
     )
     answer_outcomes = query_rows(
         "SELECT answer_outcome, submissions FROM mart_quiz_summary_answer_outcomes ORDER BY answer_outcome"
