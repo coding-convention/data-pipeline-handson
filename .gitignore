@@ -1,6 +1,15 @@
-# OMX runtime/session state
-.omx/logs/
-.omx/state/
-.omx/drafts/
-.omx/metrics.json
-.omx/tmux-hook.json
+__pycache__/
+*.py[cod]
+.env
+.env.local
+.venv/
+.pytest_cache/
+.ruff_cache/
+app/data/*.sqlite3
+data/raw_spool/beacon_events/
+warehouse/*
+!warehouse/.gitkeep
+reports/*
+!reports/.gitkeep
+logs/
+.DS_Store
