@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>데이터 파이프라인 퀴즈 실습</title>
+    <style>
+      body { font-family: sans-serif; margin: 2rem auto; max-width: 860px; line-height: 1.5; }
+      .question { border: 1px solid #d0d7de; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
+      .question h2 { margin-top: 0; font-size: 1.1rem; }
+      .actions { display: flex; gap: 0.75rem; margin-top: 0.75rem; }
+      button { padding: 0.5rem 0.9rem; cursor: pointer; }
+      .result { margin-top: 0.75rem; font-weight: 600; }
+      .hint { color: #57606a; }
+      code { background: #f6f8fa; padding: 0.1rem 0.35rem; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>비콘 로그 데이터 파이프라인 실습</h1>
+      <p>
+        이 페이지는 의도적으로 단순합니다. 퀴즈 상호작용이 <code>/beacon</code>으로 전송되고,
+        나중에 MinIO → DuckDB → dbt → 정적 리포트 흐름으로 이어집니다.
+      </p>
+      <p class="hint">각 문항에 답변/건너뛰기를 수행한 뒤 <code>scripts/run_full_pipeline.sh</code>를 실행해 보세요.</p>
+    </header>
+
+    <main>
+      {% for question in questions %}
+      <section class="question" data-question-id="{{ question.id }}" data-correct-choice="{{ question.correct_choice }}">
+        <h2>Q{{ question.id }}. {{ question.prompt }}</h2>
+        <label><input type="radio" name="question-{{ question.id }}" value="A" /> A. {{ question.choice_a }}</label><br />
+        <label><input type="radio" name="question-{{ question.id }}" value="B" /> B. {{ question.choice_b }}</label><br />
+        <label><input type="radio" name="question-{{ question.id }}" value="C" /> C. {{ question.choice_c }}</label>
+        <div class="actions">
+          <button type="button" class="submit-answer">정답 제출</button>
+          <button type="button" class="skip-question">건너뛰기</button>
+        </div>
+        <div class="result" aria-live="polite"></div>
+      </section>
+      {% endfor %}
+    </main>
+
+    <script src="{{ url_for('static', filename='beacon.js') }}"></script>
+  </body>
+</html>
