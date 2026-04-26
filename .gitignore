@@ -2,8 +2,31 @@
 .omx/logs/
 .omx/state/
 .omx/drafts/
+.omx/team/
+.omx/reports/
 .omx/metrics.json
 .omx/tmux-hook.json
-# Python build artifacts
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local environment
+.env
+.env.local
+
+# Generated project data
+app/data/*.sqlite3
+data/raw_spool/beacon_events/
+warehouse/*
+!warehouse/.gitkeep
+reports/*
+!reports/.gitkeep
+logs/
+
+# macOS
+.DS_Store

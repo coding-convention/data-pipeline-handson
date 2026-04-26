@@ -1,0 +1,8 @@
+dbt_quiz:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', '/workspace/warehouse/quiz.duckdb') }}"
+      schema: main
+      threads: 1

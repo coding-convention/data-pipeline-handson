@@ -1,0 +1,20 @@
+select
+  event_id,
+  lower(event_type) as event_type,
+  schema_version,
+  session_id,
+  anonymous_user_id,
+  cast(occurred_at_client as timestamp) as occurred_at_client,
+  cast(received_at_server as timestamp) as received_at_server,
+  page_url,
+  user_agent,
+  cast(question_id as bigint) as question_id,
+  selected_choice,
+  correct_choice,
+  cast(is_correct as boolean) as is_correct,
+  skip_reason,
+  referrer,
+  source_object_key,
+  loaded_at,
+  raw_payload
+from {{ source('main', 'raw_beacon_events') }}

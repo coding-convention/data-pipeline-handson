@@ -1,7 +1,16 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import sys
 from pathlib import Path
 
-from app.quiz_seed import init_db
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR))
+
+from app.quiz_seed import init_db  # noqa: E402
+
 
 if __name__ == "__main__":
-    init_db(Path("app/data/quiz.sqlite3"))
-    print("Initialized app/data/quiz.sqlite3 with 3 quiz questions.")
+    db_path = ROOT_DIR / "app" / "data" / "quiz.sqlite3"
+    init_db(db_path)
+    print(f"Initialized {db_path.relative_to(ROOT_DIR)} with 3 quiz questions.")

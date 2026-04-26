@@ -1,0 +1,80 @@
+version: 2
+
+models:
+  - name: stg_beacon_events
+    columns:
+      - name: event_id
+        tests:
+          - not_null
+          - unique
+      - name: event_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['page_view', 'answer_submitted', 'question_skipped']
+      - name: schema_version
+        tests:
+          - not_null
+      - name: session_id
+        tests:
+          - not_null
+      - name: anonymous_user_id
+        tests:
+          - not_null
+      - name: occurred_at_client
+        tests:
+          - not_null
+      - name: received_at_server
+        tests:
+          - not_null
+
+  - name: fct_quiz_events
+    columns:
+      - name: event_id
+        tests:
+          - not_null
+          - unique
+      - name: event_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['page_view', 'answer_submitted', 'question_skipped']
+
+  - name: mart_quiz_summary
+    columns:
+      - name: metric_name
+        tests:
+          - not_null
+          - unique
+      - name: metric_value
+        tests:
+          - not_null
+
+  - name: mart_quiz_summary_event_counts
+    columns:
+      - name: event_type
+        tests:
+          - not_null
+          - unique
+      - name: cnt
+        tests:
+          - not_null
+
+  - name: mart_quiz_summary_answer_outcomes
+    columns:
+      - name: answer_outcome
+        tests:
+          - not_null
+          - unique
+      - name: submissions
+        tests:
+          - not_null
+
+  - name: mart_quiz_summary_skip_counts
+    columns:
+      - name: question_id
+        tests:
+          - not_null
+      - name: skip_count
+        tests:
+          - not_null
