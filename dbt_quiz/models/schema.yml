@@ -11,7 +11,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['page_view', 'answer_submitted', 'question_skipped']
+              arguments:
+                values: ['page_view', 'answer_submitted', 'question_skipped']
       - name: schema_version
         tests:
           - not_null
@@ -38,7 +39,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['page_view', 'answer_submitted', 'question_skipped']
+              arguments:
+                values: ['page_view', 'answer_submitted', 'question_skipped']
 
   - name: mart_quiz_summary
     columns:
