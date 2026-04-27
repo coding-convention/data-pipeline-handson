@@ -30,7 +30,18 @@ REQUIRED_DBT_TABLES = {
     "stg_beacon_events",
     "fct_quiz_events",
     "mart_quiz_summary",
+    "mart_access_log_funnel",
 }
+REQUIRED_RAW_COLUMNS = {"quiz_step", "display_order"}
+REQUIRED_FUNNEL_COLUMNS = {
+    "quiz_step",
+    "display_order",
+    "view_count",
+    "answer_count",
+    "skip_count",
+    "session_count",
+}
+VALID_QUIZ_STEPS = {"landing", "question", "finish"}
 
 
 @dataclass
@@ -80,6 +91,59 @@ def assert_sqlite(root: Path) -> Evidence:
     return Evidence("SQLite seed", f"{sqlite_path} has exactly 3 questions")
 
 
+def assert_question_scoped_event(index: int, event: dict[str, Any]) -> None:
+    ensure(
+        event.get("quiz_step") == "question",
+        f"{event.get('event_type')} event #{index} must have quiz_step='question'",
+    )
+    ensure(
+        event.get("display_order") is not None,
+        f"{event.get('event_type')} event #{index} must have non-null display_order",
+    )
+    ensure(
+        event.get("question_id") is not None,
+        f"question-scoped event #{index} must have question_id",
+    )
+
+
+def assert_sample_sequence(events: list[dict[str, Any]]) -> Evidence:
+    sample_events = [
+        event
+        for event in events
+        if event.get("session_id") == "sample-session-001" and event.get("quiz_step") is not None
+    ]
+    sample_events.sort(key=lambda event: str(event.get("occurred_at_client", "")))
+    expected = [
+        ("page_view", "landing", None),
+        ("page_view", "question", 1),
+        ("answer_submitted", "question", 1),
+        ("page_view", "question", 2),
+        ("answer_submitted", "question", 2),
+        ("page_view", "question", 3),
+        ("question_skipped", "question", 3),
+        ("page_view", "finish", None),
+    ]
+    actual = [
+        (event.get("event_type"), event.get("quiz_step"), event.get("display_order"))
+        for event in sample_events[: len(expected)]
+    ]
+    ensure(actual == expected, f"Deterministic sample sequence mismatch. expected={expected}, actual={actual}")
+
+    answer_orders = [
+        event.get("display_order")
+        for event in sample_events
+        if event.get("event_type") == "answer_submitted"
+    ]
+    skip_orders = [
+        event.get("display_order")
+        for event in sample_events
+        if event.get("event_type") == "question_skipped"
+    ]
+    ensure(answer_orders[:2] == [1, 2], f"Sample answer display_order values must start [1, 2], got {answer_orders}")
+    ensure(skip_orders[:1] == [3], f"Sample skip display_order values must start [3], got {skip_orders}")
+    return Evidence("Sample access-log sequence", "landing → q1 answer → q2 answer → q3 skip → finish with display_order 1/2/3")
+
+
 def assert_spool(root: Path) -> tuple[list[dict[str, Any]], list[Evidence], list[str]]:
     spool_root = root / "data" / "raw_spool"
     ensure(spool_root.exists(), f"Spool root missing: {spool_root}")
@@ -93,13 +157,35 @@ def assert_spool(root: Path) -> tuple[list[dict[str, Any]], list[Evidence], list
 
     true_seen = False
     false_seen = False
+    page_view_steps: set[str] = set()
+    question_display_orders: set[int] = set()
+
     for index, event in enumerate(events, start=1):
         missing_common = [field for field in REQUIRED_COMMON_FIELDS if event.get(field) in (None, "")]
         ensure(not missing_common, f"Event #{index} missing common fields: {missing_common}")
 
+        quiz_step = event.get("quiz_step")
+        if quiz_step is not None:
+            ensure(quiz_step in VALID_QUIZ_STEPS, f"Event #{index} has invalid quiz_step={quiz_step!r}")
+        if event.get("event_type") == "page_view":
+            ensure(quiz_step is not None, f"page_view event #{index} must have quiz_step")
+            page_view_steps.add(str(quiz_step))
+        if quiz_step == "question":
+            if event.get("event_type") == "page_view":
+                assert_question_scoped_event(index, event)
+            if event.get("display_order") is not None:
+                question_display_orders.add(int(event["display_order"]))
+        if quiz_step in {"landing", "finish"}:
+            ensure(
+                event.get("event_type") == "page_view",
+                f"{quiz_step} event #{index} must be page_view, got {event.get('event_type')}",
+            )
+            ensure(event.get("display_order") is None, f"{quiz_step} event #{index} must have null display_order")
+
         if event.get("event_type") == "answer_submitted":
             missing_answer = [field for field in REQUIRED_ANSWER_FIELDS if event.get(field) in (None, "")]
             ensure(not missing_answer, f"Answer event #{index} missing fields: {missing_answer}")
+            assert_question_scoped_event(index, event)
             ensure(
                 isinstance(event.get("is_correct"), bool),
                 f"Answer event #{index} has non-boolean is_correct={event.get('is_correct')!r}",
@@ -110,12 +196,22 @@ def assert_spool(root: Path) -> tuple[list[dict[str, Any]], list[Evidence], list
         if event.get("event_type") == "question_skipped":
             missing_skip = [field for field in REQUIRED_SKIP_FIELDS if event.get(field) in (None, "")]
             ensure(not missing_skip, f"Skipped event #{index} missing fields: {missing_skip}")
+            assert_question_scoped_event(index, event)
 
     ensure(true_seen and false_seen, "Expected both correct and incorrect answer_submitted outcomes")
+    ensure(
+        {"landing", "question", "finish"}.issubset(page_view_steps),
+        f"Expected page_view rows for landing/question/finish, got {sorted(page_view_steps)}",
+    )
+    ensure(
+        {1, 2, 3}.issubset(question_display_orders),
+        f"Expected question-scoped display_order values 1, 2, 3, got {sorted(question_display_orders)}",
+    )
 
     evidence = [
         Evidence("Spool files", ", ".join(str(path.relative_to(root)) for path in files)),
         Evidence("Event counts", ", ".join(f"{k}={v}" for k, v in sorted(event_types.items()))),
+        assert_sample_sequence(events),
     ]
     partitions = sorted({path.parent.name for path in files})
     return events, evidence, partitions
@@ -161,6 +257,11 @@ def assert_minio(bucket: str, prefix: str, partitions: list[str]) -> Evidence:
     return Evidence("MinIO objects", f"s3://{bucket}/{prefix} -> {preview}")
 
 
+def table_columns(conn: Any, table_name: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+    return {row[1] for row in rows}
+
+
 def assert_duckdb(root: Path) -> Evidence:
     duckdb_path = root / "warehouse" / "quiz.duckdb"
     ensure(duckdb_path.exists(), f"DuckDB file missing: {duckdb_path}")
@@ -176,14 +277,29 @@ def assert_duckdb(root: Path) -> Evidence:
         ensure("raw_beacon_events" in tables, "raw_beacon_events table missing from DuckDB")
         missing_tables = REQUIRED_DBT_TABLES - tables
         ensure(not missing_tables, f"Missing dbt-derived tables: {sorted(missing_tables)}")
+
+        raw_columns = table_columns(conn, "raw_beacon_events")
+        ensure(
+            REQUIRED_RAW_COLUMNS.issubset(raw_columns),
+            f"raw_beacon_events missing access-log columns: {sorted(REQUIRED_RAW_COLUMNS - raw_columns)}",
+        )
+        funnel_columns = table_columns(conn, "mart_access_log_funnel")
+        ensure(
+            REQUIRED_FUNNEL_COLUMNS.issubset(funnel_columns),
+            f"mart_access_log_funnel missing columns: {sorted(REQUIRED_FUNNEL_COLUMNS - funnel_columns)}",
+        )
         raw_count = conn.execute("SELECT COUNT(*) FROM raw_beacon_events").fetchone()[0]
         ensure(raw_count > 0, "raw_beacon_events exists but has zero rows")
+        funnel_view_rows = conn.execute(
+            "SELECT COUNT(*) FROM mart_access_log_funnel WHERE view_count > 0"
+        ).fetchone()[0]
+        ensure(funnel_view_rows > 0, "mart_access_log_funnel has no rows with view_count > 0")
     finally:
         conn.close()
 
     return Evidence(
         "DuckDB tables",
-        f"{duckdb_path} has raw_beacon_events and dbt tables ({', '.join(sorted(REQUIRED_DBT_TABLES))})",
+        f"{duckdb_path} has raw access columns and dbt tables ({', '.join(sorted(REQUIRED_DBT_TABLES))})",
     )
 
 
@@ -192,9 +308,10 @@ def assert_report(root: Path) -> Evidence:
     ensure(report_path.exists(), f"Report missing: {report_path}")
     content = report_path.read_text(encoding="utf-8")
     ensure(content.strip(), "Report file is empty")
+    ensure("접속/문항 노출 퍼널" in content, "Report is missing section title: 접속/문항 노출 퍼널")
     digit_count = sum(character.isdigit() for character in content)
     ensure(digit_count > 0, "Report does not appear to contain metric values")
-    return Evidence("Report", f"{report_path} exists and contains numeric metric values")
+    return Evidence("Report", f"{report_path} exists and contains 접속/문항 노출 퍼널")
 
 
 def main() -> int:

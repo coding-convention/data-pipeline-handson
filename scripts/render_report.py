@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+from html import escape
 from pathlib import Path
+from typing import Iterable
 
 import duckdb
 
@@ -12,6 +14,19 @@ REPORT_PATH = Path(os.environ.get("REPORT_PATH", "reports/quiz_pipeline_report.h
 def query_rows(query: str):
     with duckdb.connect(str(DUCKDB_PATH), read_only=True) as conn:
         return conn.execute(query).fetchall()
+
+
+def cell(value: object) -> str:
+    if value is None:
+        return "-"
+    return escape(str(value))
+
+
+def table_rows(rows: Iterable[tuple[object, ...]]) -> str:
+    return "".join(
+        "<tr>" + "".join(f"<td>{cell(value)}</td>" for value in row) + "</tr>"
+        for row in rows
+    )
 
 
 def main() -> int:
@@ -25,6 +40,13 @@ def main() -> int:
     )
     skip_counts = query_rows(
         "SELECT question_id, skip_count FROM mart_quiz_summary_skip_counts ORDER BY question_id"
+    )
+    access_funnel = query_rows(
+        """
+        SELECT quiz_step, display_order, view_count, answer_count, skip_count, session_count
+        FROM mart_access_log_funnel
+        ORDER BY display_order NULLS FIRST, quiz_step
+        """
     )
 
     html = f"""<!doctype html>
@@ -53,17 +75,22 @@ def main() -> int:
     <h2>이벤트별 건수</h2>
     <table>
       <tr><th>event_type</th><th>count</th></tr>
-      {''.join(f'<tr><td>{event_type}</td><td>{count}</td></tr>' for event_type, count in event_counts)}
+      {table_rows(event_counts)}
     </table>
     <h2>정답/오답 제출 건수</h2>
     <table>
       <tr><th>answer_outcome</th><th>submissions</th></tr>
-      {''.join(f'<tr><td>{outcome}</td><td>{count}</td></tr>' for outcome, count in answer_outcomes)}
+      {table_rows(answer_outcomes)}
     </table>
     <h2>문항별 skip 건수</h2>
     <table>
       <tr><th>question_id</th><th>skip_count</th></tr>
-      {''.join(f'<tr><td>{question_id}</td><td>{count}</td></tr>' for question_id, count in skip_counts)}
+      {table_rows(skip_counts)}
+    </table>
+    <h2>접속/문항 노출 퍼널</h2>
+    <table>
+      <tr><th>quiz_step</th><th>display_order</th><th>view_count</th><th>answer_count</th><th>skip_count</th><th>session_count</th></tr>
+      {table_rows(access_funnel)}
     </table>
   </body>
 </html>

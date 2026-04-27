@@ -19,6 +19,7 @@ MINIO_ACCESS_KEY = env("MINIO_ACCESS_KEY", env("AWS_ACCESS_KEY_ID", env("MINIO_R
 MINIO_SECRET_KEY = env("MINIO_SECRET_KEY", env("AWS_SECRET_ACCESS_KEY", env("MINIO_ROOT_PASSWORD", "minioadmin")))
 MINIO_BUCKET_RAW = env("MINIO_BUCKET_RAW", env("MINIO_BUCKET", "raw"))
 OBJECT_PREFIX = env("RAW_OBJECT_PREFIX", "beacon-events")
+CLEAR_RAW_PREFIX = env("CLEAR_RAW_PREFIX", "0").lower() in {"1", "true", "yes", "on"}
 
 
 def minio_client():
@@ -39,6 +40,19 @@ def object_key_for(file_path: Path) -> str:
     return relative.replace("beacon_events/", f"{OBJECT_PREFIX.rstrip('/')}/", 1)
 
 
+def clear_raw_prefix(client) -> int:
+    prefix = OBJECT_PREFIX.rstrip("/") + "/"
+    paginator = client.get_paginator("list_objects_v2")
+    deleted = 0
+    for page in paginator.paginate(Bucket=MINIO_BUCKET_RAW, Prefix=prefix):
+        keys = [{"Key": item["Key"]} for item in page.get("Contents", []) or []]
+        if not keys:
+            continue
+        client.delete_objects(Bucket=MINIO_BUCKET_RAW, Delete={"Objects": keys})
+        deleted += len(keys)
+    return deleted
+
+
 def main() -> int:
     files = sorted(RAW_SPOOL_DIR.glob("beacon_events/dt=*/events.jsonl"))
     if not files:
@@ -51,6 +65,10 @@ def main() -> int:
         code = exc.response.get("Error", {}).get("Code")
         if code not in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
             raise
+    if CLEAR_RAW_PREFIX:
+        deleted = clear_raw_prefix(client)
+        print(f"Cleared {deleted} existing objects under s3://{MINIO_BUCKET_RAW}/{OBJECT_PREFIX.rstrip('/')}/")
+
     uploaded: list[str] = []
     for file_path in files:
         object_key = object_key_for(file_path)

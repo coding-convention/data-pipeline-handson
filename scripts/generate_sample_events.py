@@ -6,12 +6,12 @@ import json
 import sqlite3
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 
-COMMON_SCHEMA_VERSION = "1.0"
+COMMON_SCHEMA_VERSION = "1.0.0"
 DEFAULT_PAGE_URL = "http://localhost:8000/"
 DEFAULT_USER_AGENT = "sample-generator/1.0"
 
@@ -73,7 +73,8 @@ def load_questions(sqlite_path: Path) -> list[QuestionSeed]:
         ).fetchall()
         seeds: list[QuestionSeed] = []
         for idx, row in enumerate(rows, start=1):
-            correct_choice = str(row[1]) if row[1] is not None else ["A", "B", "C"][idx - 1]
+            default_choice = ["A", "B", "C"][idx - 1]
+            correct_choice = str(row[1]) if row[1] is not None else default_choice
             seeds.append(QuestionSeed(question_id=int(row[0]), correct_choice=correct_choice))
         return seeds or [
             QuestionSeed(question_id=1, correct_choice="A"),
@@ -129,49 +130,113 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if not str(args.date).strip():
+        raise SystemExit("--date must be a non-empty YYYY-MM-DD value")
     root = repo_root()
     sqlite_path = root / "app" / "data" / "quiz.sqlite3"
     questions = load_questions(sqlite_path)
     while len(questions) < 3:
-        questions.append(QuestionSeed(question_id=len(questions) + 1, correct_choice=["A", "B", "C"][len(questions)]))
+        questions.append(
+            QuestionSeed(
+                question_id=len(questions) + 1,
+                correct_choice=["A", "B", "C"][len(questions)],
+            )
+        )
 
     partition_path = (
         root / "data" / "raw_spool" / "beacon_events" / f"dt={args.date}" / "events.jsonl"
     )
     base_time = utc_now().replace(microsecond=0)
     q1, q2, q3 = questions[:3]
+
     events = [
-        build_event("page_view", f"page_view:{args.date}", base_time, question_id=q1.question_id, referrer="direct"),
+        build_event(
+            "page_view",
+            f"page_view:landing:{args.date}",
+            base_time,
+            question_id=None,
+            quiz_step="landing",
+            display_order=None,
+            referrer="direct",
+        ),
+        build_event(
+            "page_view",
+            f"page_view:question:1:{args.date}",
+            base_time + timedelta(seconds=1),
+            question_id=q1.question_id,
+            quiz_step="question",
+            display_order=1,
+            referrer=None,
+        ),
         build_event(
             "answer_submitted",
             f"answer_submitted:correct:{args.date}",
-            base_time,
+            base_time + timedelta(seconds=2),
             question_id=q1.question_id,
+            quiz_step="question",
+            display_order=1,
             selected_choice=q1.correct_choice,
             correct_choice=q1.correct_choice,
             is_correct=True,
         ),
         build_event(
+            "page_view",
+            f"page_view:question:2:{args.date}",
+            base_time + timedelta(seconds=3),
+            question_id=q2.question_id,
+            quiz_step="question",
+            display_order=2,
+            referrer=None,
+        ),
+        build_event(
             "answer_submitted",
             f"answer_submitted:incorrect:{args.date}",
-            base_time,
+            base_time + timedelta(seconds=4),
             question_id=q2.question_id,
+            quiz_step="question",
+            display_order=2,
             selected_choice=wrong_choice(q2.correct_choice),
             correct_choice=q2.correct_choice,
             is_correct=False,
         ),
         build_event(
+            "page_view",
+            f"page_view:question:3:{args.date}",
+            base_time + timedelta(seconds=5),
+            question_id=q3.question_id,
+            quiz_step="question",
+            display_order=3,
+            referrer=None,
+        ),
+        build_event(
             "question_skipped",
             f"question_skipped:{args.date}",
-            base_time,
+            base_time + timedelta(seconds=6),
             question_id=q3.question_id,
+            quiz_step="question",
+            display_order=3,
             skip_reason="next_question",
+        ),
+        build_event(
+            "page_view",
+            f"page_view:finish:{args.date}",
+            base_time + timedelta(seconds=7),
+            question_id=None,
+            quiz_step="finish",
+            display_order=None,
+            referrer=None,
         ),
     ]
 
     write_events(partition_path, events, overwrite=args.overwrite)
     print(f"Wrote {len(events)} sample events to {partition_path}")
-    print("Event types:", ", ".join(event["event_type"] for event in events))
+    print("Event sequence:")
+    for event in events:
+        print(
+            "- {event_type} quiz_step={quiz_step} question_id={question_id} display_order={display_order}".format(
+                **event
+            )
+        )
     return 0
 
 

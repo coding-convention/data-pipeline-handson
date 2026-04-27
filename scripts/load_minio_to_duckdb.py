@@ -39,6 +39,8 @@ CREATE TABLE raw_beacon_events (
   is_correct BOOLEAN,
   skip_reason VARCHAR,
   referrer VARCHAR,
+  quiz_step VARCHAR,
+  display_order BIGINT,
   source_object_key VARCHAR,
   loaded_at TIMESTAMP DEFAULT current_timestamp,
   raw_payload JSON
@@ -95,6 +97,8 @@ def list_event_rows() -> list[tuple[object, ...]]:
                         payload.get("is_correct"),
                         payload.get("skip_reason"),
                         payload.get("referrer"),
+                        payload.get("quiz_step"),
+                        payload.get("display_order"),
                         key,
                         normalize_timestamp(payload.get("received_at_server")),
                         json.dumps(payload, ensure_ascii=False),
@@ -118,8 +122,8 @@ def main() -> int:
               event_id, event_type, schema_version, session_id, anonymous_user_id,
               occurred_at_client, received_at_server, page_url, user_agent,
               question_id, selected_choice, correct_choice, is_correct, skip_reason,
-              referrer, source_object_key, loaded_at, raw_payload
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              referrer, quiz_step, display_order, source_object_key, loaded_at, raw_payload
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )

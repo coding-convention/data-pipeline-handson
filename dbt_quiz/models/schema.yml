@@ -28,6 +28,14 @@ models:
       - name: received_at_server
         tests:
           - not_null
+      - name: quiz_step
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['landing', 'question', 'finish']
+              config:
+                where: "quiz_step is not null"
+      - name: display_order
 
   - name: fct_quiz_events
     columns:
@@ -41,6 +49,14 @@ models:
           - accepted_values:
               arguments:
                 values: ['page_view', 'answer_submitted', 'question_skipped']
+      - name: quiz_step
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['landing', 'question', 'finish']
+              config:
+                where: "quiz_step is not null"
+      - name: display_order
 
   - name: mart_quiz_summary
     columns:
@@ -78,5 +94,27 @@ models:
         tests:
           - not_null
       - name: skip_count
+        tests:
+          - not_null
+
+  - name: mart_access_log_funnel
+    columns:
+      - name: quiz_step
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['landing', 'question', 'finish']
+      - name: display_order
+      - name: view_count
+        tests:
+          - not_null
+      - name: answer_count
+        tests:
+          - not_null
+      - name: skip_count
+        tests:
+          - not_null
+      - name: session_count
         tests:
           - not_null

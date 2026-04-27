@@ -19,6 +19,8 @@ select
   end as answer_outcome,
   skip_reason,
   referrer,
+  quiz_step,
+  display_order,
   source_object_key,
   loaded_at
 from {{ ref('stg_beacon_events') }}

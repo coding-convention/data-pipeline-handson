@@ -14,6 +14,8 @@ select
   cast(is_correct as boolean) as is_correct,
   skip_reason,
   referrer,
+  quiz_step,
+  cast(display_order as bigint) as display_order,
   source_object_key,
   loaded_at,
   raw_payload

@@ -31,7 +31,8 @@ DuckDB raw table
   └─ dbt
       ├─ stg_beacon_events
       ├─ fct_quiz_events
-      └─ mart_quiz_summary
+      ├─ mart_quiz_summary
+      └─ mart_access_log_funnel
 
 dbt output
   └─ render_report.py
@@ -60,6 +61,7 @@ dbt output
 - MinIO object prefix
 - DuckDB raw table
 - dbt model/test
+- access-log funnel mart
 - HTML report
 
 ## raw 경로 규약
@@ -67,7 +69,7 @@ dbt output
 권장 raw object 규약:
 
 ```text
-s3://raw/beacon-events/dt=YYYY-MM-DD/events-*.jsonl
+s3://raw/beacon-events/dt=YYYY-MM-DD/events.jsonl
 ```
 
 권장 로컬 spool 규약:
@@ -77,6 +79,23 @@ data/raw_spool/beacon_events/dt=YYYY-MM-DD/events.jsonl
 ```
 
 이처럼 날짜 partition과 유사한 구조를 두면 학습자가 “partition-like layout”을 직관적으로 이해하기 쉽습니다.
+
+## 액세스 로그 필드가 어디까지 흘러가는가
+
+`quiz_step`과 `display_order`는 브라우저 payload에서 시작해 다음 계층을 그대로 통과합니다.
+
+```text
+beacon.js payload
+  → raw JSONL
+  → MinIO object
+  → raw_beacon_events.quiz_step/display_order
+  → stg_beacon_events
+  → fct_quiz_events
+  → mart_access_log_funnel
+  → reports/quiz_pipeline_report.html의 "접속/문항 노출 퍼널"
+```
+
+이 구조를 보면 “새 분석 요건이 생겼을 때 필드가 어느 계층까지 반영되어야 하는가?”를 추적할 수 있습니다.
 
 ## 왜 Flask 앱이 MinIO에 직접 쓰지 않는가
 

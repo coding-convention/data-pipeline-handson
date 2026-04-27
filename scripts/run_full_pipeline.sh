@@ -6,7 +6,10 @@ cd "$ROOT_DIR"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 DBT_PROFILES_DIR="${DBT_PROFILES_DIR:-dbt_quiz}"
-export DBT_PROFILES_DIR
+BOOTSTRAP_DATE="${BOOTSTRAP_DATE:-$(date -u +%F)}"
+RESET_SAMPLE_SPOOL="${RESET_SAMPLE_SPOOL:-1}"
+CLEAR_RAW_PREFIX="${CLEAR_RAW_PREFIX:-1}"
+export DBT_PROFILES_DIR CLEAR_RAW_PREFIX
 
 require_file() {
   local path="$1"
@@ -27,10 +30,11 @@ if [[ -f "scripts/init_quiz_db.py" ]]; then
   "$PYTHON_BIN" scripts/init_quiz_db.py
 fi
 
-if ! find data/raw_spool/beacon_events -name 'events.jsonl' -type f -print -quit 2>/dev/null | grep -q .; then
-  "$PYTHON_BIN" scripts/generate_sample_events.py
+if [[ "$RESET_SAMPLE_SPOOL" == "1" || "$RESET_SAMPLE_SPOOL" == "true" || "$RESET_SAMPLE_SPOOL" == "yes" ]]; then
+  rm -rf data/raw_spool/beacon_events
 fi
 
+"$PYTHON_BIN" scripts/generate_sample_events.py --date "$BOOTSTRAP_DATE" --overwrite
 "$PYTHON_BIN" scripts/upload_logs_to_minio.py
 "$PYTHON_BIN" scripts/load_minio_to_duckdb.py
 dbt run --project-dir dbt_quiz --profiles-dir "$DBT_PROFILES_DIR"
