@@ -63,6 +63,31 @@
 
 이 실습의 핵심 흐름은 다음과 같습니다.
 
+```mermaid
+flowchart LR
+    browser["브라우저 퀴즈 페이지"] --> beacon["app/static/beacon.js"]
+    beacon --> flask["Flask POST /beacon"]
+    flask --> spool["JSONL spool<br/>data/raw_spool/beacon_events/dt=YYYY-MM-DD/events.jsonl"]
+    flask --> sqlite["SQLite<br/>app/data/quiz.sqlite3"]
+    spool --> upload["upload_logs_to_minio.py"]
+    upload --> minio["MinIO DataLake<br/>s3://raw/beacon-events/dt=YYYY-MM-DD/events.jsonl"]
+    minio --> load["load_minio_to_duckdb.py"]
+    load --> duckdb["DuckDB DWH<br/>raw_beacon_events"]
+    duckdb --> dbt["dbt run / dbt test<br/>staging · fact · mart"]
+    dbt --> report["HTML report<br/>reports/quiz_pipeline_report.html"]
+
+    classDef app fill:#e7f5ff,stroke:#1c7ed6,color:#0b3057;
+    classDef raw fill:#fff4e6,stroke:#f08c00,color:#4f2a00;
+    classDef warehouse fill:#ebfbee,stroke:#2f9e44,color:#123d1d;
+    classDef output fill:#f3f0ff,stroke:#7048e8,color:#2b1a62;
+    class browser,beacon,flask,sqlite app;
+    class spool,upload,minio raw;
+    class load,duckdb,dbt warehouse;
+    class report output;
+```
+
+텍스트로 풀면 다음 경로입니다.
+
 ```text
 브라우저 퀴즈 페이지
   └─ app/static/beacon.js
@@ -97,6 +122,29 @@ Learner commands
 | DWH/raw table | DuckDB `raw_beacon_events` | object storage의 raw 로그를 SQL로 조회 가능하게 함 | `load_minio_to_duckdb.py` | dbt, 분석 쿼리 | BigQuery, Snowflake, Redshift, Databricks, ClickHouse |
 | 분석 모델 | dbt `stg_*`, `fct_*`, `mart_*` | raw 데이터를 재사용 가능한 분석 테이블로 정리 | dbt | 분석가, BI, 리포트 | dbt Cloud/Core, Dataform, SQLMesh |
 | 시각화 | `reports/quiz_pipeline_report.html` | 지표를 사람이 보는 결과물로 표현 | `render_report.py` | 실습자/비즈니스 사용자 | Looker, Tableau, Power BI, Superset, Metabase |
+
+저장소 책임을 그림으로 보면 다음과 같습니다.
+
+```mermaid
+flowchart TB
+    appdb["Application DB / OLTP<br/>SQLite questions"]
+    landing["Raw landing<br/>local JSONL spool"]
+    lake["DataLake raw zone<br/>MinIO raw bucket"]
+    dwh["DWH raw table<br/>DuckDB raw_beacon_events"]
+    models["Analysis-ready models<br/>dbt staging · fact · marts"]
+    viz["Consumption<br/>HTML report"]
+
+    appdb -. "서비스 운영 데이터" .-> browserUse["웹 앱이 읽음"]
+    landing --> lake --> dwh --> models --> viz
+    browserUse -. "사용자 행동 발생" .-> landing
+
+    classDef product fill:#e7f5ff,stroke:#1c7ed6,color:#0b3057;
+    classDef raw fill:#fff4e6,stroke:#f08c00,color:#4f2a00;
+    classDef analytics fill:#ebfbee,stroke:#2f9e44,color:#123d1d;
+    class appdb,browserUse product;
+    class landing,lake raw;
+    class dwh,models,viz analytics;
+```
 
 ### 기술스택 설명과 현업 대응표
 
@@ -420,6 +468,34 @@ docker compose run --rm pipeline dbt test --project-dir dbt_quiz --profiles-dir 
 - `question_skipped`는 항상 `quiz_step='question'`이어야 합니다.
 - 문제에 묶인 `page_view`, `answer_submitted`, `question_skipped`는 `display_order`가 null이면 안 됩니다.
 
+사용자 흐름과 생성 이벤트의 관계는 다음과 같습니다.
+
+```mermaid
+sequenceDiagram
+    participant U as 사용자
+    participant B as 브라우저 beacon.js
+    participant A as Flask app
+    participant S as JSONL spool
+
+    U->>B: 페이지 접속
+    B->>A: page_view quiz_step=landing
+    A->>S: append raw event
+    U->>B: 문제 풀기
+    B->>A: page_view quiz_step=question display_order=1
+    A->>S: append raw event
+    U->>B: 답 제출
+    B->>A: answer_submitted quiz_step=question display_order=1
+    A->>S: append raw event
+    U->>B: 다음 문제
+    B->>A: page_view quiz_step=question display_order=2
+    A->>S: append raw event
+    U->>B: 문제 패스
+    B->>A: question_skipped quiz_step=question display_order=3
+    A->>S: append raw event
+    B->>A: page_view quiz_step=finish
+    A->>S: append raw event
+```
+
 ### 4.2 deterministic sample sequence
 
 `scripts/generate_sample_events.py --overwrite`는 다음 8건을 만듭니다.
@@ -510,6 +586,26 @@ PY
 - 분석 엔지니어링 영역과 데이터 엔지니어링 영역이 만나는 지점
 
 모델 흐름:
+
+```mermaid
+flowchart LR
+    source["source<br/>raw_beacon_events"] --> stg["staging<br/>stg_beacon_events"]
+    stg --> fct["fact<br/>fct_quiz_events"]
+    fct --> summary["mart<br/>mart_quiz_summary"]
+    fct --> eventCounts["mart<br/>mart_quiz_summary_event_counts"]
+    fct --> outcomes["mart<br/>mart_quiz_summary_answer_outcomes"]
+    fct --> skips["mart<br/>mart_quiz_summary_skip_counts"]
+    fct --> funnel["mart<br/>mart_access_log_funnel"]
+
+    classDef sourceClass fill:#fff4e6,stroke:#f08c00,color:#4f2a00;
+    classDef modelClass fill:#ebfbee,stroke:#2f9e44,color:#123d1d;
+    classDef martClass fill:#f3f0ff,stroke:#7048e8,color:#2b1a62;
+    class source sourceClass;
+    class stg,fct modelClass;
+    class summary,eventCounts,outcomes,skips,funnel martClass;
+```
+
+텍스트로 보면 다음 계층입니다.
 
 ```text
 source raw_beacon_events
